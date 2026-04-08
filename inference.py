@@ -10,9 +10,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+API_BASE_URL = os.environ["API_BASE_URL"]
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-API_KEY = os.getenv("HF_TOKEN")
+API_KEY = os.environ["API_KEY"]
 
 
 TASK_NAME = os.getenv("TASK_NAME", "medium")
