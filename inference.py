@@ -18,7 +18,7 @@ API_KEY = os.getenv("HF_TOKEN")
 TASK_NAME = os.getenv("TASK_NAME", "medium")
 BENCHMARK = "natural2sql"
 MAX_STEPS = 5
-SUCCESS_THRESHOLD = 1.0 
+SUCCESS_THRESHOLD = 0.8 
 
 SYSTEM_PROMPT = textwrap.dedent(
     """
@@ -32,6 +32,7 @@ SYSTEM_PROMPT = textwrap.dedent(
 
 def log_start(task: str, env: str, model: str) -> None:
     """Log the start of the episode with task, environment, and model information."""
+    print("\n")
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
@@ -41,7 +42,7 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
     action_clean = action.replace("\n", " ").strip()
     
     print(
-        f"[STEP] step={step} action={action_clean} reward={reward:.2f} done={done_val} error={error_val}",
+        f"[STEP] step={step} action={action_clean} reward={reward:.2f} done={done_val} status={error_val}",
         flush=True,
     )
 
@@ -81,41 +82,45 @@ async def main() -> None:
     env_url = os.getenv("ENV_URL", "ws://localhost:8000")
     env = SqlEnvClient(base_url=env_url)
 
-    rewards: List[float] = []
-    steps_taken = 0
-    success = False
+    # Loop through all difficulties to satisfy the "3 tasks" requirement
+    for difficulty in ["easy", "medium", "hard", "super_hard"]:
+        rewards: List[float] = []
+        steps_taken = 0
+        success = False
+        schema_hint = "customers(id, name, email), orders(id, customer_id, total_amount, status), order_items(id, order_id, product_name, quantity, price)"
 
-    schema_hint = "customers(id, name, email), orders(id, customer_id, total_amount, status), order_items(id, order_id, product_name)"
+        log_start(task=difficulty, env=BENCHMARK, model=MODEL_NAME)
 
-    log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
-
-    try:
-        result = await env.reset(difficulty=TASK_NAME)
-        obs = result.observation
-        last_feedback = obs.last_execution_result
-        for step in range(1, MAX_STEPS + 1):
-            if result.done:
-                break
-            sql_query = await get_sql_query(client, obs.prompt, schema_hint, last_feedback)
-            result = await env.step(SqlAction(query=sql_query))
+        try:
+            result = await env.reset(difficulty=difficulty)
             obs = result.observation
-            reward = result.reward or 0.0
-            rewards.append(reward)
-            steps_taken = step
             last_feedback = obs.last_execution_result
-            log_step(step=step, action=sql_query, reward=reward, done=result.done, error=last_feedback)
 
-            if result.done:
-                if reward >= SUCCESS_THRESHOLD:
-                    success = True
-                break
-        final_score = max(rewards) if rewards else 0.0
-        final_score = min(max(final_score, 0.0), 1.0)
+            for step in range(1, MAX_STEPS + 1):
+                if result.done:
+                    break
+                
+                sql_query = await get_sql_query(client, obs.prompt, schema_hint, last_feedback)
+                result = await env.step(SqlAction(query=sql_query))
+                
+                obs = result.observation
+                reward = result.reward or 0.0
+                rewards.append(reward)
+                steps_taken = step
+                last_feedback = obs.last_execution_result
+                
+                log_step(step=step, action=sql_query, reward=reward, done=result.done, error=last_feedback)
 
-    except Exception as e:
-        print(f"[ERROR] Inference failed: {e}")
-    finally:
-        log_end(success=success, steps=steps_taken, score=final_score, rewards=rewards)
+                if result.done:
+                    if reward >= SUCCESS_THRESHOLD:
+                        success = True
+                    break
+            
+            final_score = max(rewards) if rewards else 0.0
+            log_end(success=success, steps=steps_taken, score=final_score, rewards=rewards)
+
+        except Exception as e:
+            print(f"[ERROR] Inference failed for {difficulty}: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

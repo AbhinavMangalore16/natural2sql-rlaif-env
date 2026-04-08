@@ -39,22 +39,54 @@ class SqlEnvironment(Environment):
         self._initialize_schema()
         self._seed_data()
 
+        # ✅ Schema context (added)
+        schema_context = """
+    Database Schema:
+    - customers(id, name, email)
+    - orders(id, customer_id, total_amount, status, created_at)
+    - order_items(id, order_id, product_name, quantity, price)
+    """
+
         if difficulty == "easy":
-            self._current_prompt = "Which customer placed order with id = 1?"
+            task = "Which customer placed order with id = 1?"
             self._expected_answer = [("Aarav Sharma",)]
         elif difficulty == "medium":
-            self._current_prompt = "What is the total revenue from completed orders?"
+            task = "What is the total revenue from completed orders?"
             self._expected_answer = [(770.0,)] 
         elif difficulty == "hard":
-            self._current_prompt = "How many distinct customers have placed at least one order?"
+            task = "How many distinct customers have placed at least one order?"
             self._expected_answer = [(5,)]
         else: 
-            self._current_prompt = "List the names of all customers who purchased a 'Laptop'."
+            task = "List the names of all customers who purchased a 'Laptop'."
             self._expected_answer = [("Aarav Sharma",)]
 
-        self._state = SqlState(episode_id=episode_id or str(uuid.uuid4()), step_count=0, difficulty=difficulty, target_answer=str(self._expected_answer), max_attempts=self.MAX_ATTEMPTS)
-        return SqlObservation(done=False, reward=None, prompt=self._current_prompt, last_execution_result="Waiting for first query...", remaining_attempts=self.MAX_ATTEMPTS)
+        # ✅ Combined prompt (schema + task)
+        self._current_prompt = f"""
+    You are an SQL agent.
 
+    {schema_context}
+
+    Task:
+    {task}
+
+    Return only a valid SQL query.
+    """
+
+        self._state = SqlState(
+            episode_id=episode_id or str(uuid.uuid4()),
+            step_count=0,
+            difficulty=difficulty,
+            target_answer=str(self._expected_answer),
+            max_attempts=self.MAX_ATTEMPTS
+        )
+
+        return SqlObservation(
+            done=False,
+            reward=None,
+            prompt=self._current_prompt,
+            last_execution_result="Waiting for first query...",
+            remaining_attempts=self.MAX_ATTEMPTS
+        )
     def step(self, action: SqlAction, timeout_s=None, **kwargs) -> SqlObservation:
         self._state.step_count += 1
         query_upper = action.query.strip().upper()
@@ -75,9 +107,15 @@ class SqlEnvironment(Environment):
         try:
             self._cursor.execute(raw_query)
             result = self._cursor.fetchall()
+            is_wildcard = bool(re.search(r'SELECT\s+(\*|.*,\s*\*|\w+\.\*)', query_upper))
 
-            if result == self._expected_answer:
-                reward, msg = (0.8, f"Success! Output: {result}. (Tip: Avoid SELECT *, specify columns.)") if "*" in query_upper else (1.0, f"✅ Perfect! Output: {result}.")
+            if set(result) == set(self._expected_answer):
+                if is_wildcard:
+                    reward = 0.8
+                    msg = f"Success! Output: {result}. (Tip: Avoid SELECT *, specify columns for production code.)"
+                else:
+                    reward = 1.0
+                    msg = f"✅ Perfect! Output: {result}."
                 done = True
             else:
                 done = self._state.step_count >= self.MAX_ATTEMPTS

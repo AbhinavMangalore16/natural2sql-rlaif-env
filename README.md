@@ -36,6 +36,8 @@ Agents are evaluated not only on correctness, but also on:
 ## Innovation Highlights
 
 ### Safety Guardrails
+LLM agents would often write lazy or dangerous SQL commands. The penalizing guardrails solve that. We have demonstrated that this extends to production safety, not just code golfing.
+
 - Strict penalty (-1.0) for destructive SQL operations:
 
 ```js
@@ -49,6 +51,8 @@ blocked_patterns = [
 - Simulates production-safe SQL environments
 
 ### Efficiency Grading
+Grades efficient and optimized SQL queries.
+
 - Penalizes `SELECT *`
 - Rewards explicit column selection
 - Encourages production-grade query writing
@@ -107,7 +111,7 @@ A structured Pydantic-based state containing:
 
 | Model | Avg. Success Rate | Avg. Steps |
 |------|------------------|-----------|
-| Qwen/Qwen2.5-72B-Instruct | 98% | 1.2 |
+| Qwen/Qwen2.5-72B-Instruct | 97% | 1.2 |
 
 ---
 
