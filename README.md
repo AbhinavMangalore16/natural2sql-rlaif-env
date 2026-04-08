@@ -1,5 +1,5 @@
 ---
-title: Natural2SQL: RL-Driven Data Engineering Bench
+title: "Natural2SQL: RL-Driven Data Engineering Bench"
 emoji: 🗄️
 colorFrom: blue
 colorTo: indigo
