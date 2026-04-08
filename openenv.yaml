@@ -1,0 +1,4 @@
+name: natural2sql-ecommerce
+version: "1.0"
+description: "A multi-turn SQLite environment simulating an e-commerce database."
+entrypoint: "server.environment:SqlEnvironment"
