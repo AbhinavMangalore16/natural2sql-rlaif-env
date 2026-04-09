@@ -6,12 +6,9 @@ from openai import AsyncOpenAI
 
 from client import SqlEnvClient
 from models import SqlAction
-from dotenv import load_dotenv
-load_dotenv()
-
 
 API_BASE_URL = os.environ["API_BASE_URL"]
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 API_KEY = os.environ["API_KEY"]
 
 
@@ -42,7 +39,7 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
     action_clean = action.replace("\n", " ").strip()
     
     print(
-        f"[STEP] step={step} action={action_clean} reward={reward:.2f} done={done_val} status={error_val}",
+        f"[STEP] step={step} action={action_clean} reward={reward:.2f} done={done_val} error={error_val}",
         flush=True,
     )
 
