@@ -7,20 +7,18 @@ from openai import OpenAI
 from client import SqlEnvClient
 from models import SqlAction
 
-API_BASE_URL = os.environ["API_BASE_URL"]
-API_KEY = os.environ["API_KEY"]
+# 1. & 2. STRICT INITIALIZATION (Required by Validator)
+# We use os.environ[] directly to ensure the script fails-fast if keys are missing.
+try:
+    API_BASE_URL = os.environ["API_BASE_URL"]
+    API_KEY = os.environ["API_KEY"]
+except KeyError as e:
+    print(f"[CRITICAL] Missing required environment variable: {e}")
+    raise
 
-MODEL_NAME = os.getenv("MODEL_NAME")
+# MODEL_NAME can have a fallback as per the checklist
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
-if not MODEL_NAME:
-    MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"  
-    print(f"[WARN] MODEL_NAME not set, using default: {MODEL_NAME}", flush=True)
-# except KeyError:
-#     MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
-#     print(f"[INFO] MODEL_NAME not found in environment, defaulting to {MODEL_NAME}")
-
-
-TASK_NAME = os.getenv("TASK_NAME", "medium")
 BENCHMARK = "natural2sql"
 MAX_STEPS = 5
 SUCCESS_THRESHOLD = 0.8 
@@ -34,44 +32,24 @@ SYSTEM_PROMPT = textwrap.dedent(
     3. If you receive an error message, fix your previous query.
     """
 ).strip()
-def resolve(result):
-    if asyncio.iscoroutine(result):
-        return asyncio.run(result)
-    return result
 
 def log_start(task: str, env: str, model: str) -> None:
-    """Log the start of the episode with task, environment, and model information."""
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
-    """Log the details of each step, including the action taken, reward received, done status, and any error messages."""
     done_val = str(done).lower()
     error_val = error if error else "null"
     action_clean = action.replace("\n", " ").strip()
-    
-    print(
-        f"[STEP] step={step} action={action_clean} reward={reward:.2f} done={done_val} error={error_val}",
-        flush=True,
-    )
+    print(f"[STEP] step={step} action={action_clean} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
 
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
-    """Log the final results of the episode, including success status, total steps taken, final score, and reward trajectory."""
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
 
 def get_sql_query(client: OpenAI, prompt: str, schema: str, feedback: str) -> str:
-    """Generate a SQL query using the LLM based on the task prompt, database schema, and feedback from the environment."""
-    user_prompt = textwrap.dedent(
-        f"""
-        Schema: {schema}
-        Task: {prompt}
-        Last Feedback: {feedback}
-        
-        Generate the SQL query:
-        """
-    ).strip()
-    
+    user_prompt = f"Schema: {schema}\nTask: {prompt}\nLast Feedback: {feedback}\nGenerate SQL:"
     try:
+        # 3. LLM CALL (Uses the OpenAI client initialized above)
         completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
@@ -86,12 +64,13 @@ def get_sql_query(client: OpenAI, prompt: str, schema: str, feedback: str) -> st
         print(f"[ERROR] LLM call failed: {e}", flush=True)
         raise e
 
-def main() -> None:
+async def main() -> None:
+    # Initialize client once
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    
     env_url = os.getenv("ENV_URL", "ws://localhost:8000")
     env = SqlEnvClient(base_url=env_url)
 
-    # Loop through all difficulties to satisfy the "3 tasks" requirement
     for difficulty in ["easy", "medium", "hard", "super_hard"]:
         rewards: List[float] = []
         steps_taken = 0
@@ -101,12 +80,8 @@ def main() -> None:
         log_start(task=difficulty, env=BENCHMARK, model=MODEL_NAME)
 
         try:
-            try:
-                result = resolve(env.reset(difficulty=difficulty))
-            except Exception as e:
-                print(f"[ERROR] env.reset failed: {e}", flush=True)
-                log_end(False, 0, 0.0, [])
-                continue
+            # PROPER ASYNC HANDLING: Use 'await' instead of 'resolve'
+            result = await env.reset(difficulty=difficulty)
             obs = result.observation
             last_feedback = obs.last_execution_result
 
@@ -115,12 +90,9 @@ def main() -> None:
                     break
                 
                 sql_query = get_sql_query(client, obs.prompt, schema_hint, last_feedback)
-                try:
-                    result = resolve(env.step(SqlAction(query=sql_query)))
-                except Exception as e:
-                    print(f"[ERROR] env.step failed: {e}", flush=True)
-                    log_step(step, sql_query, 0.0, True, str(e))
-                    break
+                
+                # Step the environment
+                result = await env.step(SqlAction(query=sql_query))
                 
                 obs = result.observation
                 reward = result.reward or 0.0
@@ -130,17 +102,17 @@ def main() -> None:
                 
                 log_step(step=step, action=sql_query, reward=reward, done=result.done, error=last_feedback)
 
-                if result.done:
-                    if reward >= SUCCESS_THRESHOLD:
-                        success = True
+                if result.done and reward >= SUCCESS_THRESHOLD:
+                    success = True
                     break
             
             final_score = max(rewards) if rewards else 0.0
             log_end(success=success, steps=steps_taken, score=final_score, rewards=rewards)
 
         except Exception as e:
-            print(f"[ERROR] Inference failed for {difficulty}: {e}")
+            print(f"[ERROR] Task {difficulty} failed: {e}", flush=True)
             log_end(success=False, steps=steps_taken, score=0.0, rewards=rewards)
 
 if __name__ == "__main__":
-    main()
+    # Start the single event loop
+    asyncio.run(main())
