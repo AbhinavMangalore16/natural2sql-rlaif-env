@@ -7,18 +7,11 @@ from openai import OpenAI
 from client import SqlEnvClient
 from models import SqlAction
 
-API_BASE_URL = os.getenv("API_BASE_URL")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-
-
-if not API_KEY:
-    print("[WARN] No API key found, using empty key", flush=True)
-    API_KEY = "dummy"
+API_BASE_URL = os.environ["API_BASE_URL"]
+API_KEY = os.environ["API_KEY"]
 
 MODEL_NAME = os.getenv("MODEL_NAME")
-if not API_BASE_URL:
-    API_BASE_URL = "https://router.huggingface.co/v1"
-    print(f"[WARN] API_BASE_URL not set, using default: {API_BASE_URL}", flush=True)
+
 if not MODEL_NAME:
     MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"  
     print(f"[WARN] MODEL_NAME not set, using default: {MODEL_NAME}", flush=True)
