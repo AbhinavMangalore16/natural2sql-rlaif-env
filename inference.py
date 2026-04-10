@@ -7,16 +7,21 @@ from openai import OpenAI
 from client import SqlEnvClient
 from models import SqlAction
 
-API_BASE_URL = os.environ["API_BASE_URL"]
+API_BASE_URL = os.getenv("API_BASE_URL")
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 
+
 if not API_KEY:
-    raise ValueError("API key not found (HF_TOKEN/API_KEY missing)")
+    print("[WARN] No API key found, using empty key", flush=True)
+    API_KEY = "dummy"
 
-MODEL_NAME = os.environ.get("MODEL_NAME")
-
+MODEL_NAME = os.getenv("MODEL_NAME")
+if not API_BASE_URL:
+    API_BASE_URL = "https://router.huggingface.co/v1"
+    print(f"[WARN] API_BASE_URL not set, using default: {API_BASE_URL}", flush=True)
 if not MODEL_NAME:
-    raise ValueError("MODEL_NAME not provided in environment")
+    MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"  
+    print(f"[WARN] MODEL_NAME not set, using default: {MODEL_NAME}", flush=True)
 # except KeyError:
 #     MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
 #     print(f"[INFO] MODEL_NAME not found in environment, defaulting to {MODEL_NAME}")
@@ -36,6 +41,10 @@ SYSTEM_PROMPT = textwrap.dedent(
     3. If you receive an error message, fix your previous query.
     """
 ).strip()
+def resolve(result):
+    if asyncio.iscoroutine(result):
+        return asyncio.run(result)
+    return result
 
 def log_start(task: str, env: str, model: str) -> None:
     """Log the start of the episode with task, environment, and model information."""
@@ -99,7 +108,12 @@ def main() -> None:
         log_start(task=difficulty, env=BENCHMARK, model=MODEL_NAME)
 
         try:
-            result = env.reset(difficulty=difficulty)
+            try:
+                result = resolve(env.reset(difficulty=difficulty))
+            except Exception as e:
+                print(f"[ERROR] env.reset failed: {e}", flush=True)
+                log_end(False, 0, 0.0, [])
+                continue
             obs = result.observation
             last_feedback = obs.last_execution_result
 
@@ -108,7 +122,12 @@ def main() -> None:
                     break
                 
                 sql_query = get_sql_query(client, obs.prompt, schema_hint, last_feedback)
-                result = env.step(SqlAction(query=sql_query))
+                try:
+                    result = resolve(env.step(SqlAction(query=sql_query)))
+                except Exception as e:
+                    print(f"[ERROR] env.step failed: {e}", flush=True)
+                    log_step(step, sql_query, 0.0, True, str(e))
+                    break
                 
                 obs = result.observation
                 reward = result.reward or 0.0
