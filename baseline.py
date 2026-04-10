@@ -3,14 +3,10 @@ import asyncio
 from openai import AsyncOpenAI
 from client import SqlEnvClient
 from models import SqlAction
-from dotenv import load_dotenv
-load_dotenv()
-
-hf_token = os.getenv("HF_TOKEN")
 
 client = AsyncOpenAI(
-    base_url="https://router.huggingface.co/v1",
-    api_key=hf_token
+    base_url=os.environ["API_BASE_URL"],
+    api_key=os.environ["API_KEY"]
 )
 
 MODEL_NAME = "Qwen/Qwen2.5-Coder-7B-Instruct"

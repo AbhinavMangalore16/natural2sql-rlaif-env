@@ -8,8 +8,12 @@ from client import SqlEnvClient
 from models import SqlAction
 
 API_BASE_URL = os.environ["API_BASE_URL"]
-MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 API_KEY = os.environ["API_KEY"]
+try:
+    MODEL_NAME = os.environ["MODEL_NAME"]
+except KeyError:
+    MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
+    print(f"[INFO] MODEL_NAME not found in environment, defaulting to {MODEL_NAME}")
 
 
 TASK_NAME = os.getenv("TASK_NAME", "medium")
@@ -118,6 +122,7 @@ async def main() -> None:
 
         except Exception as e:
             print(f"[ERROR] Inference failed for {difficulty}: {e}")
+            log_end(success=False, steps=steps_taken, score=0.0, rewards=rewards)
 
 if __name__ == "__main__":
     asyncio.run(main())
