@@ -2,18 +2,24 @@ import asyncio
 import os
 import textwrap
 from typing import List, Optional
-from openai import AsyncOpenAI
+from openai import OpenAI
 
 from client import SqlEnvClient
 from models import SqlAction
 
 API_BASE_URL = os.environ["API_BASE_URL"]
-API_KEY = os.environ["API_KEY"]
-try:
-    MODEL_NAME = os.environ["MODEL_NAME"]
-except KeyError:
-    MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
-    print(f"[INFO] MODEL_NAME not found in environment, defaulting to {MODEL_NAME}")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+
+if not API_KEY:
+    raise ValueError("API key not found (HF_TOKEN/API_KEY missing)")
+
+MODEL_NAME = os.environ.get("MODEL_NAME")
+
+if not MODEL_NAME:
+    raise ValueError("MODEL_NAME not provided in environment")
+# except KeyError:
+#     MODEL_NAME = "Qwen/Qwen2.5-72B-Instruct"
+#     print(f"[INFO] MODEL_NAME not found in environment, defaulting to {MODEL_NAME}")
 
 
 TASK_NAME = os.getenv("TASK_NAME", "medium")
@@ -33,13 +39,12 @@ SYSTEM_PROMPT = textwrap.dedent(
 
 def log_start(task: str, env: str, model: str) -> None:
     """Log the start of the episode with task, environment, and model information."""
-    print("\n")
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
     """Log the details of each step, including the action taken, reward received, done status, and any error messages."""
     done_val = str(done).lower()
-    error_val = error if error and "Success" not in error else "null"
+    error_val = error if error else "null"
     action_clean = action.replace("\n", " ").strip()
     
     print(
@@ -50,9 +55,9 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
     """Log the final results of the episode, including success status, total steps taken, final score, and reward trajectory."""
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
 
-async def get_sql_query(client: AsyncOpenAI, prompt: str, schema: str, feedback: str) -> str:
+def get_sql_query(client: OpenAI, prompt: str, schema: str, feedback: str) -> str:
     """Generate a SQL query using the LLM based on the task prompt, database schema, and feedback from the environment."""
     user_prompt = textwrap.dedent(
         f"""
@@ -65,7 +70,7 @@ async def get_sql_query(client: AsyncOpenAI, prompt: str, schema: str, feedback:
     ).strip()
     
     try:
-        completion = await client.chat.completions.create(
+        completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -76,10 +81,11 @@ async def get_sql_query(client: AsyncOpenAI, prompt: str, schema: str, feedback:
         )
         return (completion.choices[0].message.content or "").strip()
     except Exception as e:
-        return f"-- Error generating query: {str(e)}"
+        print(f"[ERROR] LLM call failed: {e}", flush=True)
+        raise e
 
-async def main() -> None:
-    client = AsyncOpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+def main() -> None:
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
     env_url = os.getenv("ENV_URL", "ws://localhost:8000")
     env = SqlEnvClient(base_url=env_url)
 
@@ -93,7 +99,7 @@ async def main() -> None:
         log_start(task=difficulty, env=BENCHMARK, model=MODEL_NAME)
 
         try:
-            result = await env.reset(difficulty=difficulty)
+            result = env.reset(difficulty=difficulty)
             obs = result.observation
             last_feedback = obs.last_execution_result
 
@@ -101,8 +107,8 @@ async def main() -> None:
                 if result.done:
                     break
                 
-                sql_query = await get_sql_query(client, obs.prompt, schema_hint, last_feedback)
-                result = await env.step(SqlAction(query=sql_query))
+                sql_query = get_sql_query(client, obs.prompt, schema_hint, last_feedback)
+                result = env.step(SqlAction(query=sql_query))
                 
                 obs = result.observation
                 reward = result.reward or 0.0
@@ -125,4 +131,4 @@ async def main() -> None:
             log_end(success=False, steps=steps_taken, score=0.0, rewards=rewards)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
