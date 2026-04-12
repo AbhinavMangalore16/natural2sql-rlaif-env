@@ -12,7 +12,7 @@ if root_path not in sys.path:
 from openenv.core.env_server import create_fastapi_app
 
 # 3. Import your local modules
-from environment import SqlEnvironment
+from .environment import SqlEnvironment
 from models import SqlAction, SqlObservation
 
 # 4. Initialize the FastAPI app using the official wrapper
