@@ -78,6 +78,26 @@ A structured Pydantic-based state containing:
 ### Reward Function and hierarchy
 
 To ensure mathematical stability for RL-AIF trainers and meet strict validator requirements, all rewards are mapped to a strictly positive range.
+### Base Rewards by Difficulty
+
+| Difficulty | Success (Optimized) | Success (Wildcard `SELECT *`) | Failure (Incorrect Logic) |
+|------------|--------------------|------------------------------|---------------------------|
+| Easy       | 0.75               | 0.70                         | 0.20 – 0.25               |
+| Medium     | 0.60               | 0.55                         | 0.15 – 0.25               |
+| Hard       | 0.35               | 0.30                         | 0.10 – 0.20               |
+| Super Hard | 0.35               | 0.30                         | 0.10 – 0.20               |
+
+---
+
+### Additional Reward Rules
+
+| Condition | Reward |
+|----------|--------|
+| Syntax Error (retry allowed) | 0.05 |
+| Syntax Error (final attempt) | 0.02 |
+| Safety Violation | 0.01 |
+
+### Additional data on above:
 
 | Condition | Reward | Description |
 | :--- | :--- | :--- |
