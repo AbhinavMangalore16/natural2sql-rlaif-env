@@ -11,7 +11,7 @@ if root_path not in sys.path:
     sys.path.append(root_path)
 
 from openenv.core.env_server import create_fastapi_app
-from environment import SqlEnvironment
+from .environment import SqlEnvironment
 from models import SqlAction, SqlObservation
 
 LIVE_METRICS = {
