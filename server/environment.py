@@ -90,15 +90,23 @@ class SqlEnvironment(Environment):
     def step(self, action: SqlAction, timeout_s=None, **kwargs) -> SqlObservation:
         self._state.step_count += 1
         query_upper = action.query.strip().upper()
-        blocked_patterns = [
-            "DROP", "DELETE", "TRUNCATE", "UPDATE", "INSERT",  # Destructive
-            "UNION",                                           # Unauthorized Extraction/Leakage
-            "CROSS JOIN",                                      # Cartesian Product (Resource Exhaustion)
-            "ALTER", "GRANT", "REVOKE", "CREATE"               # Schema/Permission manipulation
-        ]
+        
+        # 1. Define Difficulty-Based Reward Mapping
+        diff = self._state.difficulty
+        if diff == "easy":
+            success_r, failure_r = 0.75, 0.20
+        elif diff == "medium":
+            success_r, failure_r = 0.60, 0.15
+        else: # hard and super_hard
+            success_r, failure_r = 0.35, 0.10
+        
+        safety_r = 0.01
+
+        # 2. Safety Check
+        blocked_patterns = ["DROP", "DELETE", "TRUNCATE", "UPDATE", "INSERT", "UNION", "CROSS JOIN", "ALTER", "GRANT", "REVOKE", "CREATE"]
         if any(k in query_upper for k in blocked_patterns):
             self._state.step_count = self.MAX_ATTEMPTS
-            return SqlObservation(done=True, reward=-1.0, prompt=self._current_prompt, last_execution_result="❌ CRITICAL SAFETY VIOLATION: Destructive commands are prohibited.", remaining_attempts=0)
+            return SqlObservation(done=True, reward=safety_r, prompt=self._current_prompt, last_execution_result="❌ SAFETY VIOLATION", remaining_attempts=0)
 
         raw_query = action.query.strip()
         if raw_query.startswith("[") and raw_query.endswith("]"): raw_query = raw_query[1:-1]
@@ -107,32 +115,33 @@ class SqlEnvironment(Environment):
         try:
             self._cursor.execute(raw_query)
             result = self._cursor.fetchall()
-            is_wildcard = bool(re.search(r'SELECT\s+(\*|.*,\s*\*|\w+\.\*)', query_upper))
-
+            
+            # Success Path
             if set(result) == set(self._expected_answer):
-                if is_wildcard:
-                    reward = 0.8
-                    msg = f"Success! Output: {result}. (Tip: Avoid SELECT *, specify columns for production code.)"
-                else:
-                    reward = 1.0
-                    msg = f"✅ Perfect! Output: {result}."
+                # If they used SELECT *, give them slightly less than the max for that difficulty
+                is_wildcard = bool(re.search(r'SELECT\s+(\*|.*,\s*\*|\w+\.\*)', query_upper))
+                reward = (success_r - 0.05) if is_wildcard else success_r
+                
+                msg = f"✅ Success! Output: {result}"
                 done = True
+            
+            # Persistence Path
             else:
                 done = self._state.step_count >= self.MAX_ATTEMPTS
                 if not result:
-                    reward, msg = (0.1, "Executed, but returned an empty set. Check your WHERE clause filters.")
+                    reward, msg = (failure_r + 0.05, "Executed, but returned an empty set.")
                 else:
-                    reward = 0.3
-                    try:
-                        actual_val, expected_val = result[0][0], self._expected_answer[0][0]
-                        diff_msg = "HIGHER" if actual_val > expected_val else "LOWER"
-                        msg = f"Logic Error: Your result ({actual_val}) is {diff_msg} than expected. Review your aggregation filters."
-                    except:
-                        msg = f"Executed, but output {result} does not match the expected answer."
-                if done: reward = -1.0
+                    reward = failure_r + 0.10
+                    msg = "Executed, but output does not match expected."
+                
+                # Final failure after max attempts
+                if done: reward = failure_r
+
         except sqlite3.Error as e:
             done = self._state.step_count >= self.MAX_ATTEMPTS
-            reward, msg = (-0.3 if not done else -1.0, f"SQL Syntax Error: {str(e)}")
+            # Syntax errors get the lowest non-safety reward
+            reward = 0.05 if not done else 0.02
+            msg = f"SQL Syntax Error: {str(e)}"
 
         return SqlObservation(done=done, reward=reward, prompt=self._current_prompt, last_execution_result=msg, remaining_attempts=remaining)
 
