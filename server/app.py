@@ -11,16 +11,15 @@ if root_path not in sys.path:
     sys.path.append(root_path)
 
 from openenv.core.env_server import create_fastapi_app
-from .environment import SqlEnvironment
+from environment import SqlEnvironment
 from models import SqlAction, SqlObservation
-
 
 LIVE_METRICS = {
     "total_steps": 0,
     "last_query": "Waiting for agent payload...",
     "last_reward": 0.00,
     "status": "Idling ⏳",
-    "difficulty": "unknown"
+    "difficulty": "UNKNOWN"
 }
 AGENT_IS_RUNNING = False
 
@@ -41,7 +40,6 @@ class TrackedSqlEnvironment(SqlEnvironment):
 
 app = create_fastapi_app(TrackedSqlEnvironment, SqlAction, SqlObservation)
 
-
 @app.post("/trigger-inference")
 async def trigger_inference():
     global AGENT_IS_RUNNING
@@ -55,7 +53,6 @@ async def trigger_inference():
     async def run_script():
         global AGENT_IS_RUNNING
         try:
-            # Copy environment and force it to connect locally INSIDE the container
             env = os.environ.copy()
             env["ENV_URL"] = "ws://localhost:8000" 
             
@@ -65,23 +62,18 @@ async def trigger_inference():
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            await process.communicate() # Wait for it to finish
+            await process.communicate()
         except Exception as e:
             LIVE_METRICS["status"] = f"Error: {str(e)}"
         finally:
             AGENT_IS_RUNNING = False
             LIVE_METRICS["status"] = "Agent Finished ✅"
 
-    # Start the background task
     asyncio.create_task(run_script())
     return {"status": "started", "message": "Inference triggered."}
 
-# ---------------------------------------------------------
-# 🌟 ENDPOINTS: Metrics API & Frontend
-# ---------------------------------------------------------
 @app.get("/metrics")
 async def get_metrics():
-    # Pass the running state to the frontend so we can disable the button
     return {**LIVE_METRICS, "is_running": AGENT_IS_RUNNING}
 
 @app.get("/", response_class=HTMLResponse)
@@ -125,6 +117,10 @@ async def landing_page():
                     </div>
                 </div>
 
+                <button id="launch-btn" onclick="triggerAgent()" class="w-full mb-8 bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-[0_0_20px_rgba(37,99,235,0.3)] transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
+                    🚀 DEPLOY AUTONOMOUS AGENT
+                </button>
+
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                     <div class="bg-slate-900/80 p-5 rounded-2xl border border-slate-700/50">
                         <p class="text-slate-500 text-[10px] uppercase font-bold tracking-wider mb-1">Total Steps</p>
@@ -135,12 +131,12 @@ async def landing_page():
                         <p class="text-3xl font-mono text-yellow-400" id="ui-reward">0.00</p>
                     </div>
                     <div class="bg-slate-900/80 p-5 rounded-2xl border border-slate-700/50">
-                        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-wider mb-1">LatestDifficulty</p>
+                        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-wider mb-1">Latest Difficulty</p>
                         <p class="text-2xl font-mono text-pink-400" id="ui-difficulty">UNKNOWN</p>
                     </div>
-                    <div class="col-span-2 bg-slate-900/80 p-5 rounded-2xl border border-slate-700/50 flex flex-col justify-center">
-                        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-wider mb-1">Sample Execution Environment</p>
-                        <p class="text-sm font-mono text-slate-300 truncate">Hugging Face Docker Container (Internal)</p>
+                    <div class="bg-slate-900/80 p-5 rounded-2xl border border-slate-700/50 flex flex-col justify-center">
+                        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-wider mb-1">Environment</p>
+                        <p class="text-sm font-mono text-slate-300 truncate">Hugging Face Container</p>
                     </div>
                 </div>
 
@@ -159,7 +155,6 @@ async def landing_page():
             const launchBtn = document.getElementById('launch-btn');
             let lastSteps = 0;
 
-            // Trigger the backend to run the script
             async function triggerAgent() {
                 try {
                     await fetch('/trigger-inference', { method: 'POST' });
@@ -181,7 +176,6 @@ async def landing_page():
                 }
             }
 
-            // Polling Loop
             setInterval(async () => {
                 try {
                     const res = await fetch('/metrics');
@@ -190,16 +184,16 @@ async def landing_page():
                     document.getElementById('ui-steps').innerText = data.total_steps;
                     document.getElementById('ui-reward').innerText = data.last_reward.toFixed(2);
                     document.getElementById('ui-status').innerText = data.status;
+                    
                     const diffEl = document.getElementById('ui-difficulty');
                     diffEl.innerText = data.difficulty;
-
                     diffEl.className = "text-2xl font-mono " +
                         (data.difficulty === "EASY" ? "text-green-400" :
                         data.difficulty === "MEDIUM" ? "text-yellow-400" :
                         data.difficulty === "HARD" ? "text-orange-400" :
-                        "text-red-400");
+                        data.difficulty === "SUPER_HARD" ? "text-red-400" :
+                        "text-pink-400");
 
-                    // Manage Button State
                     if (data.is_running) {
                         launchBtn.disabled = true;
                         launchBtn.innerText = "⚡ AGENT IS ACTIVE...";
