@@ -1,5 +1,52 @@
 spec_version: 1
 name: natural2sql-ecommerce
 version: "1.0"
-description: "A multi-turn SQLite environment simulating an e-commerce database."
+description: "A multi-turn SQLite environment simulating an e-commerce database for training SQL agents."
 entrypoint: "server.environment:SqlEnvironment"
+
+# Documentation for Phase 3 Human Reviewers
+tags:
+  - sqlite
+  - rlaif
+  - multi-turn
+  - sql-generation
+
+# --- TASK DEFINITIONS (Checklist #3 Compliance) ---
+tasks:
+  - name: "easy"
+    difficulty: "easy"
+    prompt: "Which customer placed order with id = 1?"
+    grader:
+      type: "sql_match"
+      expected_output: "[('Aarav Sharma',)]"
+      max_score: 0.75
+
+  - name: "medium"
+    difficulty: "medium"
+    prompt: "What is the total revenue from completed orders?"
+    grader:
+      type: "sql_match"
+      expected_output: "[(770.0,)]"
+      max_score: 0.60
+
+  - name: "hard"
+    difficulty: "hard"
+    prompt: "How many distinct customers have placed at least one order?"
+    grader:
+      type: "sql_match"
+      expected_output: "[(5,)]"
+      max_score: 0.35
+
+  - name: "super_hard"
+    difficulty: "super_hard"
+    prompt: "List the names of all customers who purchased a 'Laptop'."
+    grader:
+      type: "sql_match"
+      expected_output: "[('Aarav Sharma',)]"
+      max_score: 0.35
+
+# --- ENVIRONMENT CONFIG ---
+config:
+  max_steps: 5
+  db_type: "sqlite3"
+  safety_mode: true

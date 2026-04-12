@@ -77,13 +77,15 @@ A structured Pydantic-based state containing:
 
 ### Reward Function and hierarchy
 
+To ensure mathematical stability for RL-AIF trainers and meet strict validator requirements, all rewards are mapped to a strictly positive range.
+
 | Condition | Reward | Description |
-|----------|--------|------------|
-| Success (optimized) | 1.0 | Correct data + efficient query |
-| Success (inefficient) | 0.8 | Correct but uses `SELECT *` |
-| Misalignment | 0.3 | Valid SQL syntax but incorrect logic or schema usage |
-| Syntax Error | -0.3 | Query fails to compile; triggers retry |
-| Safety Violation / Failure | -1.0 | Destructive query or exhausted attempts |
+| :--- | :--- | :--- |
+| **Success (Optimized)** | `0.35 - 0.75` | Correct data returned + efficient column selection. |
+| **Success (Inefficient)** | `Reward - 0.05` | Correct answer, but penalized for using `SELECT *`. |
+| **Logic/Schema Error** | `0.10 - 0.25` | Valid SQL syntax but incorrect result set. |
+| **Syntax Error** | `0.02 - 0.05` | Query fails to compile; triggers iterative retry. |
+| **Safety Violation** | `0.01` | Destructive command detected or attempts exhausted. |
 
 ---
 
