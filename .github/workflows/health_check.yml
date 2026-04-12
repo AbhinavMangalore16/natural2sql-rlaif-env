@@ -1,0 +1,15 @@
+name: Health Check
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping HF Space
+        run: |
+          echo "Pinging Natural2SQL Space..."
+          curl -I https://abhinavm16104-natural2sql-rlaif-env.hf.space
