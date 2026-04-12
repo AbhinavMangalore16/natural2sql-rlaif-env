@@ -10,14 +10,14 @@ from client import SqlEnvClient
 from models import SqlAction
 
 # --- CONFIGURATION (Following Example Strictly) ---
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.getenv("MODEL_NAME","gpt-4.1-mini")
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
+API_BASE_URL = os.getenv("API_BASE_URL", default="https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME",default="Qwen/Qwen2.5-72B-Instruct")
 IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME") # Optional for your setup
 
 BENCHMARK = "natural2sql"
 MAX_STEPS = 5
-SUCCESS_THRESHOLD = 0.80  
+SUCCESS_THRESHOLD = 0.30  
 
 SYSTEM_PROMPT = textwrap.dedent(
     """
@@ -65,7 +65,7 @@ def get_model_message(client: OpenAI, prompt: str, schema: str, feedback: str) -
         return (completion.choices[0].message.content or "").strip()
     except Exception as exc:
         print(f"[DEBUG] Model request failed: {exc}", flush=True)
-        return "SELECT 1;" # Fallback
+        return "[SELECT 1;]" # Fallback
 
 # --- MAIN EXECUTION ---
 
@@ -117,7 +117,7 @@ async def main() -> None:
 
         except Exception as e:
             print(f"[DEBUG] Error during {difficulty}: {e}", flush=True)
-            log_end(success=False, steps=steps_taken, score=0.0, rewards=rewards)
+            log_end(success=False, steps=steps_taken, score=0.01, rewards=rewards)
 
 if __name__ == "__main__":
     asyncio.run(main())

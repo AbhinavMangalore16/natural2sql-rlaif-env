@@ -16,8 +16,8 @@ COPY . .
 RUN uv pip install --system .
 
 # Expose the port Hugging Face expects
-EXPOSE 7860
+EXPOSE 8000
 
 # Run the Uvicorn server
 # Using server.app:app because of your project structure
-CMD ["python", "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["python", "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
